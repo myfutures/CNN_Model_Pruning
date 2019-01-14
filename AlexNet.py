@@ -7,7 +7,7 @@ class AlexNet(object):
     """Implementation of the AlexNet."""
 
     def __init__(self, x, keep_prob, num_classes, skip_layer,
-                 weights_path='DEFAULT'):
+                 weights_path='DEFAULT',prune=True):
         """Create the graph of the AlexNet model.
 
         Args:
@@ -24,6 +24,7 @@ class AlexNet(object):
         self.NUM_CLASSES = num_classes
         self.KEEP_PROB = keep_prob
         self.SKIP_LAYER = skip_layer
+        self.prune=prune
 
         if weights_path == 'DEFAULT':
             self.WEIGHTS_PATH = 'bvlc_alexnet.npy'
@@ -36,36 +37,36 @@ class AlexNet(object):
     def create(self):
         """Create the network graph."""
         # 1st Layer: Conv (w ReLu) -> Lrn -> Pool
-        conv1 = conv(self.X, 11, 11, 96, 4, 4, padding='VALID', name='conv1')
+        conv1 = conv(self.X, 11, 11, 96, 4, 4, padding='VALID', name='conv1',prune=self.prune)
         norm1 = lrn(conv1, 2, 2e-05, 0.75, name='norm1')
         pool1 = max_pool(norm1, 3, 3, 2, 2, padding='VALID', name='pool1')
 
         # 2nd Layer: Conv (w ReLu)  -> Lrn -> Pool with 2 groups
-        conv2 = conv(pool1, 5, 5, 256, 1, 1, groups=2, name='conv2')
+        conv2 = conv(pool1, 5, 5, 256, 1, 1, groups=2, name='conv2',prune=self.prune)
         norm2 = lrn(conv2, 2, 2e-05, 0.75, name='norm2')
         pool2 = max_pool(norm2, 3, 3, 2, 2, padding='VALID', name='pool2')
 
         # 3rd Layer: Conv (w ReLu)
-        conv3 = conv(pool2, 3, 3, 384, 1, 1, name='conv3')
+        conv3 = conv(pool2, 3, 3, 384, 1, 1, name='conv3',prune=self.prune)
 
         # 4th Layer: Conv (w ReLu) splitted into two groups
-        conv4 = conv(conv3, 3, 3, 384, 1, 1, groups=2, name='conv4')
+        conv4 = conv(conv3, 3, 3, 384, 1, 1, groups=2, name='conv4',prune=self.prune)
 
         # 5th Layer: Conv (w ReLu) -> Pool splitted into two groups
-        conv5 = conv(conv4, 3, 3, 256, 1, 1, groups=2, name='conv5')
+        conv5 = conv(conv4, 3, 3, 256, 1, 1, groups=2, name='conv5',prune=self.prune)
         pool5 = max_pool(conv5, 3, 3, 2, 2, padding='VALID', name='pool5')
 
         # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
         flattened = tf.reshape(pool5, [-1, 6 * 6 * 256])  # 输入是224像素时为5,227时为6
-        fc6 = fc(flattened, 6 * 6 * 256, 4096, name='fc6')
+        fc6 = fc(flattened, 6 * 6 * 256, 4096, name='fc6',prune=self.prune)
         dropout6 = dropout(fc6, self.KEEP_PROB)
 
         # 7th Layer: FC (w ReLu) -> Dropout
-        fc7 = fc(dropout6, 4096, 4096, name='fc7')
+        fc7 = fc(dropout6, 4096, 4096, name='fc7',prune=self.prune)
         dropout7 = dropout(fc7, self.KEEP_PROB)
 
         # 8th Layer: FC and return unscaled activations
-        self.fc8 = fc(dropout7, 4096, self.NUM_CLASSES, relu=False, name='fc8')
+        self.fc8 = fc(dropout7, 4096, self.NUM_CLASSES, relu=False, name='fc8',prune=False)
 
     def load_initial_weights(self, session):
         """Load weights from file into network.
@@ -111,11 +112,11 @@ def conv(x, filter_height, filter_width, num_filters, stride_y, stride_x, name,
 
     # Create lambda function for the convolution
     if prune:
-        convolve = lambda i, k: tf.nn.conv2d(i, pruning.apply_mask(k,k.name),         #add mask for model pruning
+        convolve = lambda i, k ,sc: tf.nn.conv2d(i, pruning.apply_mask(k,sc),         #add mask for model pruning
                                             strides=[1, stride_y, stride_x, 1],
                                             padding=padding)
     else:
-        convolve = lambda i, k: tf.nn.conv2d(i, k,
+        convolve = lambda i, k, sc: tf.nn.conv2d(i, k,
                                              strides=[1, stride_y, stride_x, 1],
                                              padding=padding)
 
@@ -127,19 +128,24 @@ def conv(x, filter_height, filter_width, num_filters, stride_y, stride_x, name,
                                                     num_filters])
         biases = tf.get_variable('biases', shape=[num_filters])
 
-    if groups == 1:
-        conv = convolve(x, weights)
+        if groups == 1:
+            conv = convolve(x, weights,scope)
 
-    # In the cases of multiple groups, split inputs & weights and
-    else:
-        # Split input and weights and convolve them separately
-        input_groups = tf.split(axis=3, num_or_size_splits=groups, value=x)
-        weight_groups = tf.split(axis=3, num_or_size_splits=groups,
-                                 value=weights)
-        output_groups = [convolve(i, k) for i, k in zip(input_groups, weight_groups)]
+        # In the cases of multiple groups, split inputs & weights and
+        else:
+            # Split input and weights and convolve them separately
+            input_groups = tf.split(axis=3, num_or_size_splits=groups, value=x)
+            weight_groups = tf.split(axis=3, num_or_size_splits=groups,
+                                     value=weights)
+            num=1
+            output_groups = list()
+            for i, k in zip(input_groups, weight_groups):
+                with tf.variable_scope(str(num)) as scope_next:
+                    output_groups.append(convolve(i, k,scope_next) )
+                    num+=1
 
-        # Concat the convolved output together again
-        conv = tf.concat(axis=3, values=output_groups)
+            # Concat the convolved output together again
+            conv = tf.concat(axis=3, values=output_groups)
 
     # Add biases
     bias = tf.reshape(tf.nn.bias_add(conv, biases), tf.shape(conv))
@@ -161,7 +167,7 @@ def fc(x, num_in, num_out, name,prune=True, relu=True):
 
         # Matrix multiply weights and inputs and add bias
         if prune:
-            act = tf.nn.xw_plus_b(x, pruning.apply_mask(weights,weights.name), biases, name=scope.name)
+            act = tf.nn.xw_plus_b(x, pruning.apply_mask(weights,scope), biases, name=scope.name)
         else:
             act = tf.nn.xw_plus_b(x, weights, biases, name=scope.name)
 

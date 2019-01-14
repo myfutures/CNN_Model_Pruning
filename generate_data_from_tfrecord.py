@@ -12,7 +12,6 @@ num_readers=conf.num_readers
 resize_side_min=conf.resize_side_min
 resize_side_max=conf.resize_side_max
 BATCH_SIZE=conf.batch_size
-default_image_size=conf.default_image_size                   #原文中是224，但caffe的实现似乎用了227，为了权值读取方便，这里改成了227
 
 #imagenet属性
 num_class=conf.imagenet['num_class']
@@ -294,7 +293,7 @@ def _mean_image_subtraction(image, means):
     channels[i] -= means[i]
   return tf.concat(axis=2, values=channels)
 
-def read_tfrecord(split_name, dataset_dir, file_pattern=None,batch_size=BATCH_SIZE):
+def read_tfrecord(split_name, dataset_dir, file_pattern=None,batch_size=BATCH_SIZE,default_image_size=224):
     if split_name not in _SPLITS_TO_SIZES:
         raise ValueError('split name %s was not recognized.' % split_name)
 

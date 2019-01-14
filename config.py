@@ -5,8 +5,7 @@ num_epochs=10                       #times for the use of all training data
 batch_size=32                       #number of images for one batch
 resize_side_min=256                 #size of image after being randomly resized
 resize_side_max=350                 #google给出的数值为512
-default_image_size=224              #size of the input image
-learning_rate=0.01
+learning_rate=0.003
 learning_rate_decay_factor=0.94     #decay factor for exponential decay
 num_epochs_per_decay=2.5
 dropout_rate=0.5
@@ -27,17 +26,13 @@ imagenet['label_path']='/home/victorfang/Desktop/imagenet_tfrecord/labels.txt'
 imagenet['dataset_path']='/home/victorfang/Desktop/imagenet_tfrecord'
 
 
-
-#file path
-dataset_dir='/home/victorfang/Desktop/imagenet_tfrecord'
-label_dir="/home/victorfang/Desktop/imagenet_tfrecord/labels.txt"
-
 #model saving params
 #how often to write summary and checkpoint
-log_step = 100
+log_step = 1
 checkpoint_step=10000
 
 # Path for tf.summary.FileWriter and to store model checkpoints
-summary_path = "/home/victorfang/Desktop/resnet_model_saved/tensorboard"
-checkpoint_path = "/home/victorfang/Desktop/resnet_model_saved/checkpoint_online"
-highest_accuracy_path='/home/victorfang/Desktop/resnet_model_saved/accuracy.txt'
+root_path='/home/victorfang/Desktop/'
+summary_path = '_model_saved/tensorboard'
+checkpoint_path = "_model_saved/checkpoint_online"
+highest_accuracy_path='_model_saved/accuracy.txt'
